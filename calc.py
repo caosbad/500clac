@@ -70,6 +70,7 @@ class Company:
     def calc_jump(self):
         df = self.datas
         df["jump"] = df['open'] / df['close'].shift(+1) - 1
+        # df["close"] =
         self.datas = df
         return df
 
@@ -151,6 +152,10 @@ def main():
         df = company.calc_authd()
         df = company.calc_log()
         df = company.calc_jump()
+        # TODO
+        # df = company.calc_trend()
+        # df = company.calc_bid()
+        # df = company.calc_cap()
 
         # df = company.calc_jump_90()
 
