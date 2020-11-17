@@ -20,6 +20,9 @@ col_start_idx = 4
 company_col_num = 8
 company_num = 500
 
+init_cap = 1000000
+risk = 0.001
+
 companies = {}
 
 cols_name = ['date', 'open', 'close', 'adj', 'atr', 'atr20', 'ma100']
@@ -61,6 +64,13 @@ class Company:
         df = self.datas
 
     # calc
+
+    # def calc_close(self):
+    #     df = self.datas
+    #     df["close"] = df[["close", "adj"]].apply(lambda x: x["close"] * x["adj"], axis=1)
+    #     self.datas = df
+    #     return df
+
     def calc_authd(self):
         df = self.datas
         df["authd"] = df[["close", "adj"]].apply(lambda x: x["close"] * x["adj"], axis=1)
@@ -108,6 +118,27 @@ class Company:
         self.datas = df
         return df
 
+    def calc_trend(self):
+        df = self.datas
+        # df["trend"] = 1 if df["close"] > df["ma100"] and df["jump90"] < 0.08 else 0
+        df["trend"] = df[["close", "ma100", "jump90"]].apply(lambda x: 1 if x["close"] > x["ma100"] and x["jump90"] < 0.08 else 0 , axis=1)
+        self.datas = df
+        return df
+
+    def calc_bid(self):
+        df = self.datas
+        funds = init_cap*risk
+        # bid_num = funds/(df["atr20"]*100)
+        # TODO
+        df["bids"] = df[["trend","atr20"]].apply(lambda x: 0 if x["trend"] is 0 or x["atr20"] is 0 or isinstance(x["atr20"], str) else funds/(x["atr20"]*100), axis=1)
+        self.datas = df
+        return df
+
+    def calc_cap(self):
+        df = self.datas
+        df["cap"] = df[["bids", "close"]].apply(lambda x: x["bids"] * x["close"] * 100, axis=1)
+        self.datas = df
+        return df
 
 # class Data:
 #     def __init__(self):
@@ -152,10 +183,7 @@ def main():
         df = company.calc_authd()
         df = company.calc_log()
         df = company.calc_jump()
-        # TODO
-        # df = company.calc_trend()
-        # df = company.calc_bid()
-        # df = company.calc_cap()
+
 
         # df = company.calc_jump_90()
 
@@ -169,18 +197,21 @@ def main():
             # print(idx)
 
         df["jump90"] = df.apply(rowFumc, axis=1)
-
+        # TODO
+        df = company.calc_trend()
+        df = company.calc_bid()
+        df = company.calc_cap()
         company.calc_slope(date_input)
         # df.to_excel('./output.xls')
         companies[code] = company
 
     # print(companies)
-    df_out = pd.DataFrame([], columns=('name', 'code', 'adjm', 'atr20', 'ma100', 'jump90'))
+    df_out = pd.DataFrame([], columns=('name', 'code', 'adjm', 'atr20', 'ma100', 'jump90','close', 'trend', 'bids', 'cap'))
     for i in companies:
         com = companies[i]
         size = df_out.index.size
         row = [com.name, com.code, com.adjm, com.get_data(date_input, 'atr20'),
-               com.get_data(date_input, 'ma100'), com.get_data(date_input, 'jump90')]
+               com.get_data(date_input, 'ma100'), com.get_data(date_input, 'jump90'),com.get_data(date_input, 'close'),com.get_data(date_input, 'trend'),com.get_data(date_input, 'bids'),com.get_data(date_input, 'cap')]
         df_out.loc[size] = row
         # df_out.append([{'name': com.name, 'code': com.code, 'adjm': com.adjm, 'atr20':company.get_data(date_input,'atr20'), "ma100":company.get_data(date_input,'ma100'),'jump90':company.get_data(date_input,'jump90') }], ignore_index=True)
         # print(df_out)
