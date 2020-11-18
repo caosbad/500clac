@@ -150,19 +150,38 @@ class Company:
 #         self.atr20= 0 #atr 20
 #         self.atr100 = 0 # atr 100
 
-
 def main():
-    file = sys.argv[1]
-    date_input = sys.argv[2]
+    origin_file = sys.argv[1]
+    zz500_file = sys.argv[2]
+    start_date = sys.argv[3]
+    end_date = sys.argv[4]
 
-    content = xlrd.open_workbook(filename=file, encoding_override='gbk')
+
+    content = xlrd.open_workbook(filename=origin_file, encoding_override='gbk')
+    zz500_content = xlrd.open_workbook(filename=zz500_file, encoding_override='gbk')
     # get sheets in file
-    file = pd.ExcelFile(file)
+    file = pd.ExcelFile(origin_file)
+    zz500_file = pd.ExcelFile(zz500_file)
     sheets = file.sheet_names
+    zz500_sheets = zz500_file.sheet_names
     # print(sheets)
 
     # get the last sheet by default
     raw_df = pd.read_excel(content, sheet_name=sheets[1])
+    zz500_df = pd.read_excel(zz500_content, sheet_name=zz500_sheets[0])
+
+
+    writer = pd.ExcelWriter('./output.xlsx')
+    for d in utils.iter_weekday(start_date, end_date):
+        d = d.strftime('%Y-%m-%d') # TODO date pick
+
+        ddf = calc_object(raw_df, d) # TODO cap and position calc
+        ddf.to_excel(writer, d)
+    writer.save()
+
+
+
+def calc_object(raw_df, date_input):
 
     for idx in range(0, company_num):
         date_df = raw_df.iloc[:, [0]]
@@ -220,7 +239,8 @@ def main():
     df_out = df_out.sort_values(by=['adjm'], ascending=False)
     df_out = df_out[:150]
     df_out.reset_index(drop=True)
-    df_out.to_excel('./output-'+date_input+'.xls')
+    return df_out
+    # df_out.to_excel('./output-'+date_input+'.xls')
 
 
 # map = {}
