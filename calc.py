@@ -121,7 +121,7 @@ class Company:
     def calc_trend(self):
         df = self.datas
         # df["trend"] = 1 if df["close"] > df["ma100"] and df["jump90"] < 0.08 else 0
-        df["trend"] = df[["close", "ma100", "jump90"]].apply(lambda x: 1 if x["close"] > x["ma100"] and x["jump90"] < 0.08 else 0 , axis=1)
+        df["trend"] = df[["close", "ma100", "jump90"]].apply(lambda x: 1 if x["close"] > x["ma100"] and x["jump90"] < 0.08 else 0, axis=1)
         self.datas = df
         return df
 
