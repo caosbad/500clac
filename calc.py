@@ -19,14 +19,13 @@ col_idx = 2
 col_start_idx = 4
 company_col_num = 8
 company_num = 500
-
 init_cap = 1000000
 risk = 0.001
 
 companies = {}
 
 cols_name = ['date', 'open', 'close', 'adj', 'atr', 'atr20', 'ma100']
-
+zz_cols = ['date', 'open', 'close', 'ma200', 'ma250']
 
 class Company:
     def __init__(self, name, code, df):
@@ -140,6 +139,15 @@ class Company:
         self.datas = df
         return df
 
+
+def datePick(d, df):
+    match = df[df['date'] == d]
+    if len(match) >= 1:
+        return d
+    else:
+        return datePick(utils.addDay(d, df))
+
+
 # class Data:
 #     def __init__(self):
 #         self.date= '' # date
@@ -169,12 +177,18 @@ def main():
     # get the last sheet by default
     raw_df = pd.read_excel(content, sheet_name=sheets[1])
     zz500_df = pd.read_excel(zz500_content, sheet_name=zz500_sheets[0])
-
+    zz500_df.columns = zz_cols
+    zz500_df = pd.concat([zz500_df.iloc[:, [0]], zz500_df.iloc[:, 1:5]], axis=1)
+    zz500_df = zz500_df.drop([0, 1, 2])
+    zz500_df = zz500_df.reset_index(drop=True)
+    zz500_df['date'] = zz500_df['date'].apply(lambda x: x.strftime('%Y-%m-%d'))
+    zz500_df.set_index('date')
+    print(zz500_df)
 
     writer = pd.ExcelWriter('./output.xlsx')
     for d in utils.iter_weekday(start_date, end_date):
         d = d.strftime('%Y-%m-%d') # TODO date pick
-
+        d = datePick(d, zz500_df)
         ddf = calc_object(raw_df, d) # TODO cap and position calc
         ddf.to_excel(writer, d)
     writer.save()
