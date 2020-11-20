@@ -21,7 +21,7 @@ company_col_num = 8
 company_num = 500
 init_cap = 1000000
 risk = 0.001
-
+positions = False
 companies = {}
 
 cols_name = ['date', 'open', 'close', 'adj', 'atr', 'atr20', 'ma100']
@@ -139,6 +139,9 @@ class Company:
         self.datas = df
         return df
 
+    # def calc_other(self):
+    #     df = self.datas
+    #     df["cap"] =
 
 def datePick(d, df):
     match = df[df['date'] == d]
@@ -186,13 +189,28 @@ def main():
     print(zz500_df)
 
     writer = pd.ExcelWriter('./output.xlsx')
+    writer_pos = pd.ExcelWriter('./positions.xlsx')
     for d in utils.iter_weekday(start_date, end_date):
         d = d.strftime('%Y-%m-%d') # TODO date pick
         d = datePick(d, zz500_df)
         ddf = calc_object(raw_df, d) # TODO cap and position calc
+        pdf = calc_position(ddf, zz500_df, d)
+        pdf.to_excel(writer_pos, d)
         ddf.to_excel(writer, d)
     writer.save()
+    writer_pos.save()
 
+
+def calc_position(ddf, zz500, date):
+    if positions is False:
+        init_position(ddf, zz500, date)
+    # positions
+
+
+
+def init_position(ddf, zz500, date):
+    pos = ddf[ddf['bids'] > 0]
+    # TODO add adj
 
 
 def calc_object(raw_df, date_input):
@@ -200,17 +218,13 @@ def calc_object(raw_df, date_input):
     for idx in range(0, company_num):
         date_df = raw_df.iloc[:, [0]]
         rang_df = raw_df.iloc[:, idx * company_col_num + 1:idx * company_col_num + 7]
-        # print(cdf)
-        # append time
         df = pd.concat([date_df, rang_df], axis=1)
         name = df.columns[1]
         df.columns = cols_name
-        # print(rdf)
         code = df.iat[0, 1]
         df = df.drop([0, 1, 2])
         df = df.reset_index(drop=True)
         df['date'] = df['date'].apply(lambda x: x.strftime('%Y-%m-%d'))
-        # df.set_index('date')
 
         company = Company(name, code, df)
         df = company.calc_authd()
@@ -230,28 +244,26 @@ def calc_object(raw_df, date_input):
             # print(idx)
 
         df["jump90"] = df.apply(rowFumc, axis=1)
-        # TODO
         df = company.calc_trend()
         df = company.calc_bid()
         df = company.calc_cap()
         company.calc_slope(date_input)
-        # df.to_excel('./output.xls')
         companies[code] = company
 
     # print(companies)
-    df_out = pd.DataFrame([], columns=('name', 'code', 'adjm', 'atr20', 'ma100', 'jump90','close', 'trend', 'bids', 'cap'))
+    df_out = pd.DataFrame([], columns=('name', 'code', 'adjm', 'atr20', 'ma100', 'jump90','close', 'trend', 'bids', 'cap', 'adj'))
     for i in companies:
         com = companies[i]
         size = df_out.index.size
         row = [com.name, com.code, com.adjm, com.get_data(date_input, 'atr20'),
-               com.get_data(date_input, 'ma100'), com.get_data(date_input, 'jump90'),com.get_data(date_input, 'close'),com.get_data(date_input, 'trend'),com.get_data(date_input, 'bids'),com.get_data(date_input, 'cap')]
+               com.get_data(date_input, 'ma100'), com.get_data(date_input, 'jump90'),com.get_data(date_input, 'close'),com.get_data(date_input, 'trend'),com.get_data(date_input, 'bids'),com.get_data(date_input, 'cap'), com.get_data(date_input, 'adj')]
         df_out.loc[size] = row
         # df_out.append([{'name': com.name, 'code': com.code, 'adjm': com.adjm, 'atr20':company.get_data(date_input,'atr20'), "ma100":company.get_data(date_input,'ma100'),'jump90':company.get_data(date_input,'jump90') }], ignore_index=True)
         # print(df_out)
 
     # print(df_out)
     df_out = df_out.sort_values(by=['adjm'], ascending=False)
-    df_out = df_out[:150]
+    df_out = df_out[:100]
     df_out.reset_index(drop=True)
     return df_out
     # df_out.to_excel('./output-'+date_input+'.xls')
