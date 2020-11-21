@@ -125,6 +125,7 @@ class Company:
         return df
 
     def calc_bid(self):
+        global init_cap
         df = self.datas
         funds = init_cap*risk
         # bid_num = funds/(df["atr20"]*100)
@@ -202,15 +203,31 @@ def main():
 
 
 def calc_position(ddf, zz500, date):
+    global positions
     if positions is False:
-        init_position(ddf, zz500, date)
-    # positions
+        return init_position(ddf, zz500, date)
+    positions = change_position(ddf, zz500, date)
 
 
+def change_position(ddf, zz500, date):
+    global positions
+    # TODO
 
+
+# 初始化仓位
 def init_position(ddf, zz500, date):
     pos = ddf[ddf['bids'] > 0]
-    # TODO add adj
+    pos['sum'] = ddf['cap'].cumsum()
+    pos['top100'] = pos["bids"].apply(lambda x : x/x)
+    # ser = pos[pos['sum'] <= init_cap]
+    pos = buy_position(pos, zz500, date)
+    print(pos)
+    return pos
+
+
+def buy_position(pos, zz500, date):
+    global positions
+
 
 
 def calc_object(raw_df, date_input):
