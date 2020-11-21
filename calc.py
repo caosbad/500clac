@@ -1,4 +1,5 @@
 import pandas as pd
+pd.options.mode.chained_assignment = None  # default='warn'
 import sys
 import xlrd
 import xlwt
@@ -20,6 +21,7 @@ col_start_idx = 4
 company_col_num = 8
 company_num = 500
 init_cap = 1000000
+current_balance = 1000000
 risk = 0.001
 positions = False
 companies = {}
@@ -187,7 +189,7 @@ def main():
     zz500_df = zz500_df.reset_index(drop=True)
     zz500_df['date'] = zz500_df['date'].apply(lambda x: x.strftime('%Y-%m-%d'))
     zz500_df.set_index('date')
-    print(zz500_df)
+    # print(zz500_df)
 
     writer = pd.ExcelWriter('./output.xlsx')
     writer_pos = pd.ExcelWriter('./positions.xlsx')
@@ -219,6 +221,7 @@ def init_position(ddf, zz500, date):
     pos = ddf[ddf['bids'] > 0]
     pos['sum'] = ddf['cap'].cumsum()
     pos['top100'] = pos["bids"].apply(lambda x : x/x)
+    pos['hold'] = ddf['cap'].apply(lambda x: 0)
     # ser = pos[pos['sum'] <= init_cap]
     pos = buy_position(pos, zz500, date)
     print(pos)
@@ -226,8 +229,35 @@ def init_position(ddf, zz500, date):
 
 
 def buy_position(pos, zz500, date):
-    global positions
+    global current_balance
+    zz500_record = zz500[zz500['date'] == date]
+    if check_cap(pos) == False:
+        return 0
+    # 价格趋势判断
+    close = zz500_record['close'].to_list()[0]
+    ma200 =  zz500_record['ma200'].to_list()[0]
+    if close < ma200:
+        return 0
 
+    for index, row in pos.iterrows():
+        if current_balance < row.cap:
+            break
+        current_balance = current_balance - row.cap
+        pos.loc[index, 'hold'] = 1
+        pos[index] = row
+
+    return pos
+
+
+
+
+
+
+def check_cap(pos):
+    global init_cap
+    sum_price = pos[pos['bids'] > 0]['close'].sum()
+    if(sum_price * 100 > init_cap):
+        return False
 
 
 def calc_object(raw_df, date_input):
