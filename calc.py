@@ -26,6 +26,9 @@ risk = 0.001
 positions = False
 companies = {}
 
+is_double = False
+
+
 cols_name = ['date', 'open', 'close', 'adj', 'atr', 'atr20', 'ma100']
 zz_cols = ['date', 'open', 'close', 'ma200', 'ma250']
 
@@ -132,7 +135,7 @@ class Company:
         funds = init_cap*risk
         # bid_num = funds/(df["atr20"]*100)
         # TODO
-        df["bids"] = df[["trend","atr20"]].apply(lambda x: 0 if x["trend"] is 0 or x["atr20"] is 0 or isinstance(x["atr20"], str) else funds/(x["atr20"]*100), axis=1)
+        df["bids"] = df[["trend","atr20"]].apply(lambda x: 0 if x["trend"] is 0 or x["atr20"] is 0 or isinstance(x["atr20"], str) else math.floor(funds/(x["atr20"]*100)), axis=1)
         self.datas = df
         return df
 
@@ -153,7 +156,12 @@ def datePick(d, df):
     else:
         return datePick(utils.addDay(d, df))
 
-
+def get_data(df, prop, value):
+    match = df[df[prop] == value]
+    if len(match) < 1:
+        print('data input is not in the range:' + df + prop + value)
+        exit()
+    return match[prop].to_list()[0]
 # class Data:
 #     def __init__(self):
 #         self.date= '' # date
@@ -206,42 +214,200 @@ def main():
 
 def calc_position(ddf, zz500, date):
     global positions
+    global is_double
     if positions is False:
         return init_position(ddf, zz500, date)
-    positions = change_position(ddf, zz500, date)
+    else:
+        is_double = not is_double
+    new_pos = change_position(ddf, zz500, date)
+    positions = new_pos
 
+
+    return new_pos
 
 def change_position(ddf, zz500, date):
     global positions
-    # TODO
+    global is_double
+    global init_cap
+    global is_double
+    # check position
+
+    positions['adj1'] = positions['adj'].apply(lambda x: x)
+    for index, p in positions.iterrows():
+        match = ddf[ddf['code'] == p.code]
+
+        # exclude
+        if len(match) == 0 :
+            sell_postion(index, p, ddf)
+            break
+        # trend lost
+        close = match['close'].to_list()[0]
+        ma100 = match['ma100'].to_list()[0]
+        positions.loc[index, 'close'] = close
+        positions.loc[index, 'ma100'] = ma100
+        positions.loc[index, 'trend'] = 0
+        # over buying
+        jump90 = match['jump90'].to_list()[0]
+        adjm = match['adjm'].to_list()[0]
+        adjm100 = ddf.iat[100, 'adjm']
+
+        positions.loc[index, 'adjm'] = adjm
+        positions.loc[index, 'jump90'] = jump90
+
+        if adjm < adjm100 or close < ma100 or jump90 > 0.08:
+            sell_postion(index, p, ddf)
+            break
+
+        # recalc cap of position
+        adj = match['adj'].to_list()[0]
+        positions.loc[index, 'adj'] = adj
+
+    positions['cap'] = positions[["bids", "close", "adj", "adj1"]].apply(lambda x: (x["bids"] * x["close"] * x["adj"] * 100)/x["adj1"], axis=1)
+    positions['sum'] = ddf['cap'].cumsum()
+
+    if is_double:
+        positions = rebalance(ddf, zz500, date)
+
+    positions = buy_position(ddf, zz500, date)
+    init_cap = positions[positions['hold'] > 0]['cap'].sum()
+    # buy position  global change
+    # positions = buy_position(ddf, zz500, date)
+
+
+def rebalance(ddf, zz500, date):
+    global positions
+    global current_balance
+    global init_cap
+
+    funds = init_cap * risk
+    repo = pd.concat([ddf], axis=1)
+    # repo['adj1'] = positions['adj']
+    repo['rebids'] = ddf['atr20'].apply(lambda x: math.floor(funds/(x*100)))
+
+    for index, p in repo.iterrows():
+        diff = p.rebids - p.bids
+        if diff > 0:
+            add_position(diff, p ,index, repo)
+        elif diff<0 :
+            cut_position(diff, p, index, repo)
+
+    return repo
+
+
+def add_position(bids, p, idx, repo):
+    global init_cap
+    global current_balance
+
+    add = p.close * bids * 100
+    current_balance -= add
+
+    cap = add + p.cap
+
+    repo.loc[idx, 'cap'] = cap
+    repo.loc[idx, 'bids'] = p.rebids
+
+
+def cut_position(bids, p, idx, repo):
+    global init_cap
+    global current_balance
+    bids = abs(bids)
+    cut = p.close * bids * 100
+    current_balance += cut
+
+    cap = p.cap - cut
+
+    repo.loc[idx, 'cap'] = cap
+    repo.loc[idx, 'bids'] = p.rebids
+
+
+
+def sell_postion(index, p, ddf):
+    global current_balance
+    global positions
+    match = ddf[ddf['code'] == p.code]
+    close = 0
+    if len(match) > 1:
+        close = match['close'].to_list()[0]
+    else:
+        close = p.close
+    cap = p.bids * 100 * close
+    current_balance -= cap
+
+    # update position state
+    positions.loc[index, 'bids'] = 0
+    positions.loc[index, 'cap'] = 0
+    positions.loc[index, 'hold'] = 0
+
+
+def buy_position(ddf, zz500, date):
+    global positions
+    global init_cap
+    global current_balance
+    pos = ddf[ddf['bids'] > 0]
+    zz500_record = zz500[zz500['date'] == date]
+    # 剩余资金判断
+    if not check_cap(pos):
+        return pos
+    # 价格趋势判断
+    close = zz500_record['close'].to_list()[0]
+    ma200 = zz500_record['ma200'].to_list()[0]
+    if close < ma200:
+        return pos
+
+    for index, row in pos.iterrows():
+        if current_balance < row.cap:
+            break
+
+        if row.jump90 > 0.08:
+            break
+        # 最小手数
+        if current_balance < row.close * 100:
+            break
+        # TODO 剩余不够如何处理
+        current_balance = current_balance - row.cap
+        pos.loc[index, 'hold'] = 1
+        pos[index] = row
+
+    return positions
+
 
 
 # 初始化仓位
 def init_position(ddf, zz500, date):
+    global is_double
     pos = ddf[ddf['bids'] > 0]
     pos['sum'] = ddf['cap'].cumsum()
     pos['top100'] = pos["bids"].apply(lambda x : x/x)
     pos['hold'] = ddf['cap'].apply(lambda x: 0)
     # ser = pos[pos['sum'] <= init_cap]
-    pos = buy_position(pos, zz500, date)
-    print(pos)
+    pos = init_buy_position(pos, zz500, date)
+    # print(pos)
+    is_double = False
     return pos
 
 
-def buy_position(pos, zz500, date):
+def init_buy_position(pos, zz500, date):
     global current_balance
     zz500_record = zz500[zz500['date'] == date]
-    if check_cap(pos) == False:
-        return 0
+    # 剩余资金判断
+    if not check_cap(pos):
+        return pos
     # 价格趋势判断
     close = zz500_record['close'].to_list()[0]
-    ma200 =  zz500_record['ma200'].to_list()[0]
+    ma200 = zz500_record['ma200'].to_list()[0]
     if close < ma200:
-        return 0
+        return pos
 
     for index, row in pos.iterrows():
         if current_balance < row.cap:
             break
+
+        if row.jump90 > 0.08:
+            break
+        # 最小手数
+        if current_balance < row.close * 100:
+            break
+        # TODO 剩余不够如何处理
         current_balance = current_balance - row.cap
         pos.loc[index, 'hold'] = 1
         pos[index] = row
@@ -310,7 +476,7 @@ def calc_object(raw_df, date_input):
 
     # print(df_out)
     df_out = df_out.sort_values(by=['adjm'], ascending=False)
-    df_out = df_out[:100]
+    df_out = df_out[:150] # TODO keep the 500 list for confirm the position
     df_out.reset_index(drop=True)
     return df_out
     # df_out.to_excel('./output-'+date_input+'.xls')
