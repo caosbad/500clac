@@ -279,15 +279,20 @@ def rebalance(ddf, zz500, date):
     global init_cap
 
     funds = init_cap * risk
-    repo = pd.concat([ddf], axis=1)
+    repo = pd.concat([positions], axis=1)
     # repo['adj1'] = positions['adj']
-    repo['rebids'] = ddf['atr20'].apply(lambda x: 0 if x==0 else math.floor(funds/(x*100)))
+    ddf['rebids'] = ddf['atr20'].apply(lambda x: 0 if x==0 else math.floor(funds/(x*100)))
 
     for index, p in repo.iterrows():
-        if p.rebids == 0:
+        match = ddf[ddf['code'] == p.code]
+        if len(match) == 0:
             break
 
-        diff = p.rebids - p.bids
+        rebids = match['rebids'].to_list()[0]
+        if rebids == 0:
+            break
+        # TODO test rebids and pos['hold']
+        diff = rebids - p.bids
         if diff > 0:
             add_position(diff, p ,index, repo)
         elif diff < 0 :
@@ -356,23 +361,50 @@ def buy_position(ddf, zz500, date):
     if close < ma200:
         return positions
 
-    new_position_need = compare_col(data_pos['code'], positions['code'])
+    new_position_need = compare_col(data_pos, positions)
+    for code in new_position_need:
+        bid = data_pos[data_pos['code'] == code]
+        close = bid['close'].to_list()[0]
+        min_cap = close * 100
+        if current_balance < min_cap:
+            break
+
+        ma100 = bid['ma100'].to_list()[0]
+        if close < ma100:
+            break
+
+        jump90 = bid['jump90'].to_list()[0]
+        if jump90 > 0.08:
+            break
+
+        bids = bid['bids'].to_list()[0]
+        max_bids = current_balance % min_cap
+        if max_bids > bids:
+            current_balance -= bids*min_cap
+        else:
+            current_balance -= max_bids * min_cap
+            bids = max_bids
+
+        positions = positions.append(bid.to_dict(), ignore_index=True)
+
+
+
+
     # TODO
     return positions
 
 
-def compare_col(pos, dff):
-    pos_col = pos.to_dict(orient='list')[0]
-    data_col = dff.to_dict(orient='list')[0]
-    diff = set(pos_col).difference(data_col)
-    print(diff)
+def compare_col(dff, pos):
+    pos_col = pos.to_dict(orient='list')['code']
+    data_col = dff.to_dict(orient='list')['code']
+    diff = list(set(data_col) - set(pos_col))
     return diff
 
 # 初始化仓位
 def init_position(ddf, zz500, date):
     global is_double
     global positions
-    pos = ddf[ddf['bids'] > 0]
+    pos = ddf[ddf['bids'] > 0][:100]
     pos['sum'] = ddf['cap'].cumsum()
     pos['top100'] = pos["bids"].apply(lambda x : x/x)
     pos['hold'] = ddf['cap'].apply(lambda x: 0)
