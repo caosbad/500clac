@@ -211,14 +211,27 @@ def main():
     writer.save()
     writer_pos.save()
 
+def calc_cap(ddf):
+    global init_cap
+    for index, p in  positions:
+        match = ddf[ddf['code'] == p.code]
+        if len(match) >0:
+            cap = match['close'].to_list()[0] * p.bids
+        else:
+            cap = p.cap
+        positions.loc[index, 'cap'] = cap
+    init_cap = positions['cap'].sum() + current_balance
 
 def calc_position(ddf, zz500, date):
     global positions
     global is_double
+    global init_cap
     if positions is False:
         return init_position(ddf, zz500, date)
     else:
         is_double = not is_double
+    # init_cap = positions['cap'].sum() + current_balance
+    calc_cap(ddf)
     new_pos = change_position(ddf, zz500, date)
     positions = new_pos
     return new_pos
@@ -243,7 +256,11 @@ def change_position(ddf, zz500, date):
         ma100 = match['ma100'].to_list()[0]
         positions.loc[index, 'close'] = close
         positions.loc[index, 'ma100'] = ma100
-        positions.loc[index, 'trend'] = 0
+        if close < ma100:
+            positions.loc[index, 'trend'] = 0
+            sell_postion(index, p, ddf)
+            break
+
         # over buying
         jump90 = match['jump90'].to_list()[0]
         adjm = match['adjm'].to_list()[0]
@@ -252,7 +269,7 @@ def change_position(ddf, zz500, date):
         positions.loc[index, 'adjm'] = adjm
         positions.loc[index, 'jump90'] = jump90
 
-        if adjm < adjm100 or close < ma100 or jump90 > 0.08:
+        if adjm < adjm100 or jump90 > 0.08:
             sell_postion(index, p, ddf)
             break
 
@@ -262,16 +279,19 @@ def change_position(ddf, zz500, date):
 
 
     positions['cap'] = positions[["bids", "close", "adj", "adj1"]].apply(lambda x: (x["bids"] * x["close"] * x["adj"] * 100)/x["adj1"], axis=1)
-    positions['sum'] = ddf['cap'].cumsum()
 
     if is_double:
         positions = rebalance(ddf, zz500, date)
 
+    print(current_balance, '====2')
     positions = buy_position(ddf, zz500, date)
-    init_cap = positions[positions['hold'] > 0]['cap'].sum()
+    positions = positions[positions['hold'] > 0]
+    init_cap = positions['cap'].sum()
+    positions['sum'] = positions['cap'].cumsum()
+
     # buy position  global change
     # positions = buy_position(ddf, zz500, date)
-
+    return positions
 
 def rebalance(ddf, zz500, date):
     global positions
@@ -293,11 +313,13 @@ def rebalance(ddf, zz500, date):
             break
         # TODO test rebids and pos['hold']
         diff = rebids - p.bids
+        print('====', diff, '====', 'rebids:', rebids, 'bids', p.bids, '====', p.code)
         if diff > 0:
             add_position(diff, p ,index, repo)
         elif diff < 0 :
             cut_position(diff, p, index, repo)
 
+    print(current_balance, '=====')
     return repo
 
 
@@ -307,11 +329,11 @@ def add_position(bids, p, idx, repo):
 
     add = p.close * bids * 100
     current_balance -= add
-
+    print('add position', add, current_balance)
     cap = add + p.cap
 
     repo.loc[idx, 'cap'] = cap
-    repo.loc[idx, 'bids'] = p.rebids
+    repo.loc[idx, 'bids'] = bids + p.bids
 
 
 def cut_position(bids, p, idx, repo):
@@ -320,11 +342,11 @@ def cut_position(bids, p, idx, repo):
     bids = abs(bids)
     cut = p.close * bids * 100
     current_balance += cut
-
+    print('cut position', cut, current_balance)
     cap = p.cap - cut
 
     repo.loc[idx, 'cap'] = cap
-    repo.loc[idx, 'bids'] = p.rebids
+    repo.loc[idx, 'bids'] = p.bids - bids
 
 
 
@@ -338,12 +360,14 @@ def sell_postion(index, p, ddf):
     else:
         close = p.close
     cap = p.bids * 100 * close
-    current_balance -= cap
-
+    current_balance += cap
+    print('sell position', cap, current_balance)
     # update position state
     positions.loc[index, 'bids'] = 0
     positions.loc[index, 'cap'] = 0
     positions.loc[index, 'hold'] = 0
+    positions.loc[index, 'close'] = close
+
 
 
 def buy_position(ddf, zz500, date):
@@ -381,14 +405,16 @@ def buy_position(ddf, zz500, date):
         max_bids = current_balance % min_cap
         if max_bids > bids:
             current_balance -= bids*min_cap
+            print('buy position', bids * min_cap, current_balance)
         else:
             current_balance -= max_bids * min_cap
             bids = max_bids
+            positions.loc[positions['code'] == code, 'bids'] = bids
+            print('buy position', max_bids * min_cap, current_balance)
+        positions.loc[positions['code'] == code, 'close'] = close
+        positions.loc[positions['code'] == code, 'hold'] = 1
 
         positions = positions.append(bid.to_dict(), ignore_index=True)
-
-
-
 
     # TODO
     return positions
@@ -411,9 +437,9 @@ def init_position(ddf, zz500, date):
     # ser = pos[pos['sum'] <= init_cap]
     pos = init_buy_position(pos, zz500, date)
     # print(pos)
-    positions = pos
+    positions = pos[pos['hold'] > 0]
     is_double = False
-    return pos
+    return positions
 
 
 def init_buy_position(pos, zz500, date):
