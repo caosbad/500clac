@@ -213,7 +213,7 @@ def main():
 
 def calc_cap(ddf):
     global init_cap
-    for index, p in  positions:
+    for index, p in positions.iterrows():
         match = ddf[ddf['code'] == p.code]
         if len(match) >0:
             cap = match['close'].to_list()[0] * p.bids
