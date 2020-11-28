@@ -200,7 +200,7 @@ def main():
     # print(zz500_df)
 
     writer = pd.ExcelWriter('./output.xlsx')
-    writer_pos = pd.ExcelWriter('./positions.xlsx')
+    writer_pos = pd.ExcelWriter('positions1.xlsx')
     for d in utils.iter_weekday(start_date, end_date):
         d = d.strftime('%Y-%m-%d') # TODO date pick
         d = datePick(d, zz500_df)
@@ -289,7 +289,6 @@ def change_position(ddf, zz500, date):
     init_cap = positions['cap'].sum()
     positions['sum'] = positions['cap'].cumsum()
 
-    # buy position  global change
     # positions = buy_position(ddf, zz500, date)
     return positions
 
@@ -402,15 +401,15 @@ def buy_position(ddf, zz500, date):
             break
 
         bids = bid['bids'].to_list()[0]
-        max_bids = current_balance % min_cap
+        max_bids = math.floor(current_balance / min_cap)
         if max_bids > bids:
             current_balance -= bids*min_cap
-            print('buy position', bids * min_cap, current_balance)
+            print('buy position 1', bids * min_cap, current_balance)
         else:
             current_balance -= max_bids * min_cap
             bids = max_bids
             positions.loc[positions['code'] == code, 'bids'] = bids
-            print('buy position', max_bids * min_cap, current_balance)
+            print('buy position 2', max_bids * min_cap, current_balance)
         positions.loc[positions['code'] == code, 'close'] = close
         positions.loc[positions['code'] == code, 'hold'] = 1
 
