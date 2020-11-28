@@ -216,11 +216,12 @@ def calc_cap(ddf):
     for index, p in positions.iterrows():
         match = ddf[ddf['code'] == p.code]
         if len(match) >0:
-            cap = match['close'].to_list()[0] * p.bids
+            cap = match['close'].to_list()[0] * p.bids * 100
         else:
             cap = p.cap
         positions.loc[index, 'cap'] = cap
     init_cap = positions['cap'].sum() + current_balance
+    return init_cap
 
 def calc_position(ddf, zz500, date):
     global positions
@@ -231,7 +232,9 @@ def calc_position(ddf, zz500, date):
     else:
         is_double = not is_double
     # init_cap = positions['cap'].sum() + current_balance
-    calc_cap(ddf)
+    caps = calc_cap(ddf)
+    print(date, 'caps is ', caps)
+    print(date, 'current-balance', current_balance)
     new_pos = change_position(ddf, zz500, date)
     positions = new_pos
     return new_pos
@@ -283,7 +286,7 @@ def change_position(ddf, zz500, date):
     if is_double:
         positions = rebalance(ddf, zz500, date)
 
-    print(current_balance, '====2')
+    # print(current_balance, '====2')
     positions = buy_position(ddf, zz500, date)
     positions = positions[positions['hold'] > 0]
     init_cap = positions['cap'].sum()
@@ -296,7 +299,7 @@ def rebalance(ddf, zz500, date):
     global positions
     global current_balance
     global init_cap
-
+    print('rebalance', date)
     funds = init_cap * risk
     repo = pd.concat([positions], axis=1)
     # repo['adj1'] = positions['adj']
@@ -312,23 +315,25 @@ def rebalance(ddf, zz500, date):
             break
         # TODO test rebids and pos['hold']
         diff = rebids - p.bids
-        print('====', diff, '====', 'rebids:', rebids, 'bids', p.bids, '====', p.code)
+        # print('====', diff, '====', 'rebids:', rebids, 'bids', p.bids, '====', p.code)
         if diff > 0:
             add_position(diff, p ,index, repo)
         elif diff < 0 :
             cut_position(diff, p, index, repo)
 
-    print(current_balance, '=====')
+    # print(current_balance, '=====')
     return repo
 
 
 def add_position(bids, p, idx, repo):
     global init_cap
     global current_balance
-
     add = p.close * bids * 100
+    if current_balance< add :
+        return
+
     current_balance -= add
-    print('add position', add, current_balance)
+    # print('add position', add, current_balance)
     cap = add + p.cap
 
     repo.loc[idx, 'cap'] = cap
@@ -341,7 +346,7 @@ def cut_position(bids, p, idx, repo):
     bids = abs(bids)
     cut = p.close * bids * 100
     current_balance += cut
-    print('cut position', cut, current_balance)
+    # print('cut position', cut, current_balance)
     cap = p.cap - cut
 
     repo.loc[idx, 'cap'] = cap
