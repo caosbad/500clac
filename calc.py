@@ -200,7 +200,7 @@ def main():
     # print(zz500_df)
 
     writer = pd.ExcelWriter('./output.xlsx')
-    writer_pos = pd.ExcelWriter('positions1.xlsx')
+    writer_pos = pd.ExcelWriter('positions.xlsx')
     for d in utils.iter_weekday(start_date, end_date):
         d = d.strftime('%Y-%m-%d') # TODO date pick
         d = datePick(d, zz500_df)
