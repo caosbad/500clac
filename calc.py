@@ -154,7 +154,7 @@ def datePick(d, df):
     if len(match) >= 1:
         return d
     else:
-        return datePick(utils.addDay(d, df))
+        return datePick(utils.addDay(d), df)
 
 def get_data(df, prop, value):
     match = df[df[prop] == value]
@@ -233,8 +233,9 @@ def calc_position(ddf, zz500, date):
         is_double = not is_double
     # init_cap = positions['cap'].sum() + current_balance
     caps = calc_cap(ddf)
-    print(date, 'caps is ', caps)
-    print(date, 'current-balance', current_balance)
+    # print(date, 'caps is ', caps)
+    # print(date, 'current-balance', current_balance)
+    print(date,' caps is ', caps,  '  current-balance ', current_balance, ' total cap ', caps + current_balance)
     new_pos = change_position(ddf, zz500, date)
     positions = new_pos
     return new_pos

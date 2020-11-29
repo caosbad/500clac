@@ -47,4 +47,5 @@ def iter_weekday(start, end, weekday=2):
 
 
 def addDay(d):
-    return stringfy_date(datetime(d) + timedelta(days=1))
+    d = datetime.strptime(d, '%Y-%m-%d')
+    return stringfy_date(d + timedelta(days=1))
