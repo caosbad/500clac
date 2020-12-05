@@ -3,5 +3,6 @@ venv/*
 output-*
 __pycache__/
 .DS_Store
-positions1.xlsx
+positions.xlsx
 output.xlsx
+datas/*

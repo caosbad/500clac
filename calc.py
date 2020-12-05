@@ -6,6 +6,7 @@ import xlwt
 import math
 from scipy.stats import linregress
 import numpy as np
+import os
 
 from datetime import date
 import utils
@@ -27,7 +28,7 @@ positions = False
 companies = {}
 
 is_double = False
-
+dfs = {}
 
 cols_name = ['date', 'open', 'close', 'adj', 'atr', 'atr20', 'ma100']
 zz_cols = ['date', 'open', 'close', 'ma200', 'ma250']
@@ -52,8 +53,9 @@ class Company:
         df = self.datas
         match = df[df['date'] == date_input]
         if len(match) < 1:
-            print('date input is not in the range:' + date_input)
-            exit()
+            print('date input is not in the range:' + date_input + self.name)
+            # exit()
+            return 0
         return match[prop].to_list()[0]
 
     #
@@ -173,23 +175,36 @@ def get_data(df, prop, value):
 #         self.atr100 = 0 # atr 100
 
 def main():
+    global dfs
     origin_file = sys.argv[1]
     zz500_file = sys.argv[2]
     start_date = sys.argv[3]
     end_date = sys.argv[4]
 
+    path = "./datas"  # 文件夹目录
+    files = os.listdir(path)  # 得到文件夹下的所有文件名称
+    files.sort()
+    for idx, file in enumerate(files):  # 遍历文件夹
+        f = path + "/" + file;  # 打开文件
+        content = xlrd.open_workbook(filename=f , encoding_override='gbk')
+        raw_df = pd.read_excel(content, sheet_name='Sheet3')
 
-    content = xlrd.open_workbook(filename=origin_file, encoding_override='gbk')
+        key = utils.getDateRange(file[6:16])
+        dfs[key] = raw_df
+
+    # content = xlrd.open_workbook(filename=origin_file, encoding_override='gbk')
     zz500_content = xlrd.open_workbook(filename=zz500_file, encoding_override='gbk')
     # get sheets in file
-    file = pd.ExcelFile(origin_file)
+    # file = pd.ExcelFile(origin_file)
     zz500_file = pd.ExcelFile(zz500_file)
-    sheets = file.sheet_names
+    # sheets = file.sheet_names
     zz500_sheets = zz500_file.sheet_names
     # print(sheets)
 
     # get the last sheet by default
-    raw_df = pd.read_excel(content, sheet_name=sheets[1])
+    # raw_df = pd.read_excel(content, sheet_name=sheets[1])
+
+
     zz500_df = pd.read_excel(zz500_content, sheet_name=zz500_sheets[0])
     zz500_df.columns = zz_cols
     zz500_df = pd.concat([zz500_df.iloc[:, [0]], zz500_df.iloc[:, 1:5]], axis=1)
@@ -201,15 +216,31 @@ def main():
 
     writer = pd.ExcelWriter('./output.xlsx')
     writer_pos = pd.ExcelWriter('positions.xlsx')
-    for d in utils.iter_weekday(start_date, end_date):
+    date_range = utils.iter_weekday(start_date, end_date)
+    for d in date_range:
         d = d.strftime('%Y-%m-%d') # TODO date pick
+
         d = datePick(d, zz500_df)
-        ddf = calc_object(raw_df, d) # TODO cap and position calc
+        # ddf = calc_object(raw_df, d) # TODO cap and position calc
+        ddf = calc_object_multi(d)
         pdf = calc_position(ddf, zz500_df, d)
         pdf.to_excel(writer_pos, d)
         ddf.to_excel(writer, d)
     writer.save()
     writer_pos.save()
+
+
+def calc_object_multi(d):
+    dff = ''
+    for key, df in dfs.items():
+        date = datetime.strptime(d, '%Y-%m-%d')
+        dates = key.split('*')
+        if date > datetime.strptime(dates[0], '%Y-%m-%d') and date <= datetime.strptime(dates[1], '%Y-%m-%d'):
+            dff = df
+            break
+
+    return calc_object(dff, d)
+
 
 def calc_cap(ddf):
     global init_cap
@@ -235,7 +266,7 @@ def calc_position(ddf, zz500, date):
     caps = calc_cap(ddf)
     # print(date, 'caps is ', caps)
     # print(date, 'current-balance', current_balance)
-    print(date,' caps is ', caps,  '  current-balance ', current_balance, ' total cap ', caps + current_balance)
+    print(date,' caps is ', caps,  '  current-balance ', current_balance, ' total cap ', caps + current_balance , '========!!!!!!!=========')
     new_pos = change_position(ddf, zz500, date)
     positions = new_pos
     return new_pos
@@ -300,7 +331,7 @@ def rebalance(ddf, zz500, date):
     global positions
     global current_balance
     global init_cap
-    print('rebalance', date)
+    # print('rebalance', date)
     funds = init_cap * risk
     repo = pd.concat([positions], axis=1)
     # repo['adj1'] = positions['adj']
@@ -365,8 +396,9 @@ def sell_postion(index, p, ddf):
     else:
         close = p.close
     cap = p.bids * 100 * close
+
     current_balance += cap
-    print('sell position', cap, current_balance)
+    # print('sell position', cap, current_balance)
     # update position state
     positions.loc[index, 'bids'] = 0
     positions.loc[index, 'cap'] = 0
@@ -410,16 +442,17 @@ def buy_position(ddf, zz500, date):
         max_bids = math.floor(current_balance / min_cap)
         if max_bids > bids:
             current_balance -= bids*min_cap
-            print('buy position 1', bids * min_cap, current_balance)
+            # print('buy position 1', bids * min_cap, current_balance)
         else:
             current_balance -= max_bids * min_cap
             bids = max_bids
-            positions.loc[positions['code'] == code, 'bids'] = bids
-            print('buy position 2', max_bids * min_cap, current_balance)
+            # print('buy position 2', max_bids * min_cap, current_balance)
+
+        positions = positions.append(bid, ignore_index=True)
+        positions.loc[positions['code'] == code, 'bids'] = bids
         positions.loc[positions['code'] == code, 'close'] = close
         positions.loc[positions['code'] == code, 'hold'] = 1
 
-        positions = positions.append(bid.to_dict(), ignore_index=True)
 
     # TODO
     return positions
